@@ -10,7 +10,7 @@ WORKDIR /app
 COPY requirements.txt /app/requirements.txt
 RUN apt-get update && apt-get install -y --no-install-recommends util-linux \
     && rm -rf /var/lib/apt/lists/* \
-    && printf '#!/bin/sh\nexec nsenter -t 1 -m -u -i -n -p -- /bin/bash "$@"\n' \
+    && printf '#!/bin/sh\nHOSTUSER=$(nsenter -t 1 -m -u -i -n -p -- getent passwd 1000 | cut -d: -f1)\nexec nsenter -t 1 -m -u -i -n -p -- runuser -l "$HOSTUSER" -c "$2"\n' \
        > /usr/local/bin/hostbash \
     && chmod +x /usr/local/bin/hostbash
 

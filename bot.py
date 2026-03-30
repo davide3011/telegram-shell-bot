@@ -36,6 +36,7 @@ to allow commands such as `docker compose up -d` to control host containers:
 
 import logging
 import os
+import shlex
 import subprocess
 from typing import Dict, Optional, Set, Tuple
 
@@ -117,13 +118,15 @@ class ShellBot:
         self.allowed_user_ids = allowed_user_ids
         self.allowed_phones = allowed_phones
         self.cwd_marker = "__BOT_CWD_MARKER__"
-        self.default_cwd = os.getcwd()
         # Keep track of authorized users for the current session
         self.authorised_users: Set[int] = set()
         # Persist each authorized user's current working directory.
         self.user_cwds: Dict[int, str] = {}
         # Prefer bash for terminal-like behavior; fallback to sh if unavailable.
         self.shell_executable = "/usr/local/bin/hostbash" if os.path.exists("/usr/local/bin/hostbash") else ("/bin/bash" if os.path.exists("/bin/bash") else "/bin/sh")
+        self.use_host_shell = self.shell_executable == "/usr/local/bin/hostbash"
+        self.host_user, self.host_hostname, detected_home = self._get_host_identity()
+        self.default_cwd = os.getenv("BOT_WORK_DIR", detected_home if self.use_host_shell else os.getcwd())
         self.command_timeout = self._read_command_timeout()
 
         # Create updater and dispatcher
@@ -136,6 +139,21 @@ class ShellBot:
         self.dispatcher.add_handler(
             MessageHandler(Filters.text & ~Filters.command, self.handle_command)
         )
+
+    def _get_host_identity(self) -> tuple:
+        """Read username, hostname, and home dir of UID 1000 from the host."""
+        try:
+            result = subprocess.run(
+                [self.shell_executable, "-lc",
+                 "printf '%s@%s@%s' \"$(whoami)\" \"$(hostname)\" \"$(getent passwd 1000 | cut -d: -f6)\""],
+                capture_output=True, text=True, timeout=5,
+            )
+            parts = result.stdout.strip().split("@", 2)
+            if len(parts) == 3:
+                return parts[0], parts[1], parts[2] or "/root"
+        except Exception:
+            pass
+        return "root", "localhost", "/root"
 
     def _read_command_timeout(self) -> int:
         """Read command timeout from env with safe fallback."""
@@ -246,15 +264,26 @@ class ShellBot:
         logger.info("Executing command from user %s: %s", user_id, cmd)
 
         start_cwd = self.user_cwds.get(user_id, self.default_cwd) if user_id is not None else self.default_cwd
-        if not os.path.isdir(start_cwd):
-            start_cwd = self.default_cwd
 
-        wrapped_cmd = (
-            f"{cmd}\n"
-            "cmd_status=$?\n"
-            f"printf '\\n{self.cwd_marker}%s\\n' \"$PWD\"\n"
-            "exit $cmd_status\n"
-        )
+        if self.use_host_shell:
+            # Inject cd into the command: Popen cwd= lives in the container
+            # namespace, not the host's, so we cd inside the shell instead.
+            wrapped_cmd = (
+                f"cd {shlex.quote(start_cwd)} 2>/dev/null || true\n"
+                f"{cmd}\n"
+                "cmd_status=$?\n"
+                f"printf '\\n{self.cwd_marker}%s\\n' \"$PWD\"\n"
+                "exit $cmd_status\n"
+            )
+            popen_kwargs: dict = {}
+        else:
+            wrapped_cmd = (
+                f"{cmd}\n"
+                "cmd_status=$?\n"
+                f"printf '\\n{self.cwd_marker}%s\\n' \"$PWD\"\n"
+                "exit $cmd_status\n"
+            )
+            popen_kwargs = {"cwd": start_cwd}
 
         proc: Optional[subprocess.Popen] = None
         try:
@@ -264,7 +293,7 @@ class ShellBot:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
-                cwd=start_cwd,
+                **popen_kwargs,
             )
             # Collect output with a timeout to prevent hanging commands.
             output, _ = proc.communicate(timeout=self.command_timeout)
@@ -281,9 +310,15 @@ class ShellBot:
         except Exception as exc:
             output = f"Error while executing command: {exc}"
 
-        # If there is no output, send a placeholder message.
-        if not output.strip():
-            output = "Command executed with no output."
+        # Append a shell-style prompt so the user always knows where they are.
+        display_cwd = self.user_cwds.get(user_id, self.default_cwd) if user_id is not None else self.default_cwd
+        home = self.default_cwd
+        short_cwd = "~" if display_cwd == home else display_cwd.replace(home + "/", "~/", 1)
+        prompt_line = f"{self.host_user}@{self.host_hostname}:{short_cwd} $"
+        if output.strip():
+            output = f"{output}\n\n{prompt_line}"
+        else:
+            output = prompt_line
 
         # Telegram messages have a maximum length of 4096 characters; split if necessary.
         chunk_size = 4000
