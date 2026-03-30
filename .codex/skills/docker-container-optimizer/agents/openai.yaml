@@ -1,0 +1,4 @@
+interface:
+  display_name: "Docker Container Optimizer"
+  short_description: "Design and optimize Dockerfiles and runtime"
+  default_prompt: "Use $docker-container-optimizer to design an optimized Docker container with structured suggestions and technical brainstorming."
