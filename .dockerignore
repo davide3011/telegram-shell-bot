@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+.venv/
+.git/
+.codex/
+.env
+secrets/
+README.md

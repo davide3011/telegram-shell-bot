@@ -1,0 +1,11 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Local environment files
+.env
+
+# Docker secrets (keep only placeholder)
+secrets/*
+!secrets/.gitkeep
