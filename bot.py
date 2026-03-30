@@ -141,11 +141,20 @@ class ShellBot:
         )
 
     def _get_host_identity(self) -> tuple:
-        """Read username, hostname, and home dir of UID 1000 from the host."""
+        """Read username, hostname, and home dir from the host.
+
+        If BOT_WORK_DIR is set, the username is derived from its basename
+        (e.g. /home/davide3011 -> davide3011). Otherwise falls back to UID 1000.
+        """
+        work_dir = os.getenv("BOT_WORK_DIR", "").strip()
+        if work_dir:
+            user_lookup = f"getent passwd {shlex.quote(os.path.basename(work_dir))} | cut -d: -f6"
+        else:
+            user_lookup = "getent passwd 1000 | cut -d: -f6"
         try:
             result = subprocess.run(
                 [self.shell_executable, "-lc",
-                 "printf '%s@%s@%s' \"$(whoami)\" \"$(hostname)\" \"$(getent passwd 1000 | cut -d: -f6)\""],
+                 f"printf '%s@%s@%s' \"$(whoami)\" \"$(hostname)\" \"$({user_lookup})\""],
                 capture_output=True, text=True, timeout=5,
             )
             parts = result.stdout.strip().split("@", 2)
