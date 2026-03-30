@@ -11,6 +11,8 @@ services:
       TELEGRAM_BOT_TOKEN_FILE: /run/secrets/telegram_bot_token
     secrets:
       - telegram_bot_token
+    privileged: true
+    pid: "host"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
 
