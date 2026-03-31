@@ -1,5 +1,9 @@
 # Telegram SBC Remote Control Bot
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.11-blue.svg)](https://www.python.org/)
+[![Docker](https://img.shields.io/badge/docker-ready-blue.svg)](Dockerfile)
+
 A Dockerized Telegram bot for remotely controlling single-board computers (SBCs)
 like Raspberry Pi, Orange Pi, and Odroid without opening inbound ports or configuring
 router port forwarding.
@@ -166,6 +170,12 @@ uname -a
 docker compose down
 docker compose up -d --build
 ```
+
+## Contributing
+
+Contributions, bug reports, and feature requests are welcome.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+To report a security vulnerability, follow the [SECURITY.md](SECURITY.md) policy.
 
 ## Troubleshooting
 
